@@ -1,0 +1,3 @@
+#!/bin/bash
+# Quick launcher - delegates to the unified script
+exec "$(dirname "$0")/scripts/start.sh" "$@"
