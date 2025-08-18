@@ -1,32 +1,21 @@
 #!/bin/bash
-# Universal Project Launcher
-# Supports Windows (Git Bash/WSL), macOS, and Linux
-# Auto-downloads Java 21 if needed and starts Spring Boot application
+# Project Launcher with Auto JRE Download
+# Supports macOS and Windows (Git Bash/MSYS2)
+# Only downloads JRE (not full JDK) for smaller size
 
 set -e
 
 # Configuration
 JAVA_VERSION=21
 JRE_VENDOR="amazon-corretto"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Colors for output (with Windows CMD compatibility)
-if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" ]] && [[ -z "${MSYSTEM:-}" ]]; then
-    # Windows CMD - no colors
-    RED=""
-    GREEN=""
-    YELLOW=""
-    BLUE=""
-    NC=""
-else
-    # Unix terminals and Git Bash - with colors
-    RED='\033[0;31m'
-    GREEN='\033[0;32m'
-    YELLOW='\033[1;33m'
-    BLUE='\033[0;34m'
-    NC='\033[0m'
-fi
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
 
 # Logging functions
 log_info() {
@@ -45,23 +34,19 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Detect OS and Architecture with enhanced Windows support
+# Detect OS and Architecture
 detect_platform() {
     local os arch
     
-    # OS Detection
     case "$(uname -s)" in
-        CYGWIN*|MINGW*|MSYS*)
-            os="windows"
-            log_info "Running on Windows (Git Bash/MSYS2)"
-            ;;
         Darwin*)
             os="mac"
-            log_info "Running on macOS"
+            ;;
+        CYGWIN*|MINGW*|MSYS*)
+            os="windows"
             ;;
         Linux*)
             os="linux"
-            log_info "Running on Linux"
             ;;
         *)
             log_error "Unsupported operating system: $(uname -s)"
@@ -69,7 +54,6 @@ detect_platform() {
             ;;
     esac
     
-    # Architecture Detection
     case "$(uname -m)" in
         x86_64|amd64)
             arch="x64"
@@ -89,20 +73,7 @@ detect_platform() {
 # Get JRE installation directory
 get_jre_home() {
     local platform="$1"
-    
-    # Windows path handling
-    if [[ "$platform" == "windows-"* ]]; then
-        # Use Windows-style path for compatibility
-        local jre_dir="${HOME}/.jres/${JRE_VENDOR}-jre-${JAVA_VERSION}-${platform}"
-        # Convert to Windows path if in MSYS/Cygwin
-        if command -v cygpath >/dev/null 2>&1; then
-            echo "$(cygpath -w "$jre_dir" 2>/dev/null || echo "$jre_dir")"
-        else
-            echo "$jre_dir"
-        fi
-    else
-        echo "${HOME}/.jres/${JRE_VENDOR}-jre-${JAVA_VERSION}-${platform}"
-    fi
+    echo "${HOME}/.jres/${JRE_VENDOR}-jre-${JAVA_VERSION}-${platform}"
 }
 
 # Check if JRE is already installed and working
@@ -114,11 +85,6 @@ check_existing_jre() {
     fi
     
     local java_bin="$jre_home/bin/java"
-    # Windows executable handling
-    if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" ]]; then
-        java_bin="$jre_home/bin/java.exe"
-    fi
-    
     if [ ! -x "$java_bin" ]; then
         return 1
     fi
@@ -137,6 +103,78 @@ check_existing_jre() {
         log_warn "Expected version: $JAVA_VERSION"
         return 1
     fi
+}
+
+# Get dynamic download URL from Corretto API
+get_corretto_download_url() {
+    local platform="$1"
+    local os="${platform%-*}"
+    local arch="${platform#*-}"
+    
+    # Map platform names to Corretto API format
+    local corretto_os=""
+    local corretto_arch=""
+    
+    case "$os" in
+        "mac")
+            corretto_os="macos"
+            ;;
+        "windows")
+            corretto_os="windows"
+            ;;
+        "linux")
+            corretto_os="linux"
+            ;;
+    esac
+    
+    case "$arch" in
+        "x64")
+            corretto_arch="x64"
+            ;;
+        "aarch64")
+            corretto_arch="aarch64"
+            ;;
+    esac
+    
+    # Try to get download URL from Corretto API
+    local api_url="https://api.github.com/repos/corretto/corretto-${JAVA_VERSION}/releases/latest"
+    local download_url=""
+    
+    log_info "Fetching latest download URL from Corretto API..."
+    
+    if command -v curl >/dev/null 2>&1; then
+        local response
+        response=$(curl -s --connect-timeout 10 "$api_url" 2>/dev/null || true)
+        
+        if [ -n "$response" ] && echo "$response" | grep -q "browser_download_url"; then
+            # Parse JSON response to find matching download URL
+            download_url=$(echo "$response" | grep -o '"browser_download_url": *"[^"]*"' | grep "${corretto_os}" | grep "${corretto_arch}" | head -n1 | sed 's/.*"browser_download_url": *"\([^"]*\)".*/\1/')
+        fi
+    fi
+    
+    # Fallback to hardcoded latest URLs if API fails
+    if [ -z "$download_url" ]; then
+        log_warn "Could not fetch dynamic URL, using fallback URLs"
+        case "$platform" in
+            "mac-x64")
+                download_url="https://corretto.aws/downloads/latest/amazon-corretto-${JAVA_VERSION}-x64-macos-jdk.tar.gz"
+                ;;
+            "mac-aarch64")
+                download_url="https://corretto.aws/downloads/latest/amazon-corretto-${JAVA_VERSION}-aarch64-macos-jdk.tar.gz"
+                ;;
+            "windows-x64")
+                download_url="https://corretto.aws/downloads/latest/amazon-corretto-${JAVA_VERSION}-x64-windows-jdk.zip"
+                ;;
+            "linux-x64")
+                download_url="https://corretto.aws/downloads/latest/amazon-corretto-${JAVA_VERSION}-x64-linux-jdk.tar.gz"
+                ;;
+            "linux-aarch64")
+                download_url="https://corretto.aws/downloads/latest/amazon-corretto-${JAVA_VERSION}-aarch64-linux-jdk.tar.gz"
+                ;;
+        esac
+    fi
+    
+    echo "$download_url"
 }
 
 # Download and install JRE
@@ -158,36 +196,33 @@ download_jre() {
     # Cleanup on exit
     trap "rm -rf '$tmp_dir'" EXIT
     
-    # Use Amazon Corretto which has reliable download URLs
-    local download_url=""
-    local archive_name=""
+    # Get dynamic download URL
+    local download_url
+    download_url=$(get_corretto_download_url "$platform")
     
-    case "$platform" in
-        "mac-x64")
-            download_url="https://corretto.aws/downloads/latest/amazon-corretto-${JAVA_VERSION}-x64-macos-jdk.tar.gz"
-            archive_name="amazon-corretto-${JAVA_VERSION}-macos-x64.tar.gz"
-            ;;
-        "mac-aarch64")
-            download_url="https://corretto.aws/downloads/latest/amazon-corretto-${JAVA_VERSION}-aarch64-macos-jdk.tar.gz"
-            archive_name="amazon-corretto-${JAVA_VERSION}-macos-aarch64.tar.gz"
-            ;;
-        "windows-x64")
-            download_url="https://corretto.aws/downloads/latest/amazon-corretto-${JAVA_VERSION}-x64-windows-jdk.zip"
-            archive_name="amazon-corretto-${JAVA_VERSION}-windows-x64.zip"
-            ;;
-        "linux-x64")
-            download_url="https://corretto.aws/downloads/latest/amazon-corretto-${JAVA_VERSION}-x64-linux-jdk.tar.gz"
-            archive_name="amazon-corretto-${JAVA_VERSION}-linux-x64.tar.gz"
-            ;;
-        "linux-aarch64")
-            download_url="https://corretto.aws/downloads/latest/amazon-corretto-${JAVA_VERSION}-aarch64-linux-jdk.tar.gz"
-            archive_name="amazon-corretto-${JAVA_VERSION}-linux-aarch64.tar.gz"
-            ;;
-        *)
-            log_error "Unsupported platform: $platform"
-            exit 1
-            ;;
-    esac
+    if [ -z "$download_url" ]; then
+        log_error "Could not determine download URL for platform: $platform"
+        exit 1
+    fi
+    
+    # Generate archive name from URL
+    local archive_name
+    archive_name=$(basename "$download_url")
+    
+    if [ -z "$archive_name" ]; then
+        archive_name="amazon-corretto-${JAVA_VERSION}-${platform}.tar.gz"
+        if [[ "$platform" == "windows-"* ]]; then
+            archive_name="amazon-corretto-${JAVA_VERSION}-${platform}.zip"
+        fi
+    fi
+    
+    # Determine archive format
+    local extract_cmd
+    if [[ "$archive_name" == *.zip ]]; then
+        extract_cmd="unzip -q"
+    else
+        extract_cmd="tar -xzf"
+    fi
     
     local archive_path="$tmp_dir/$archive_name"
     
@@ -273,12 +308,7 @@ download_jre() {
     fi
     
     # Verify installation
-    local java_bin="$jre_home/bin/java"
-    if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" ]]; then
-        java_bin="$jre_home/bin/java.exe"
-    fi
-    
-    if [ ! -x "$java_bin" ]; then
+    if [ ! -x "$jre_home/bin/java" ]; then
         log_error "JRE installation failed: java executable not found"
         exit 1
     fi
@@ -357,44 +387,31 @@ setup_java() {
     export PATH="$jre_home/bin:$PATH"
     
     # Verify Java installation
-    local java_bin="$jre_home/bin/java"
-    if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" ]]; then
-        java_bin="$jre_home/bin/java.exe"
-    fi
-    
-    log_info "Java version: $("$java_bin" -version 2>&1 | head -n1)"
+    log_info "Java version: $("$jre_home/bin/java" -version 2>&1 | head -n1)"
     log_success "Java environment setup complete"
 }
 
 # Main function
 main() {
-    log_info "Universal Project Launcher"
+    log_info "Starting project launcher..."
     log_info "Required Java version: ${JAVA_VERSION}"
-    log_info "Project directory: $PROJECT_DIR"
     
     # Setup Java environment
     setup_java
     
-    # Check Maven wrapper script
+    # Check if mvnw exists
     local mvnw_script="$PROJECT_DIR/mvnw"
-    if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" ]]; then
-        # On Windows, try both .cmd and shell script
-        if [ -f "$PROJECT_DIR/mvnw.cmd" ]; then
-            mvnw_script="$PROJECT_DIR/mvnw.cmd"
-        fi
-    fi
-    
     if [ ! -f "$mvnw_script" ]; then
         log_error "Maven wrapper script not found: $mvnw_script"
         exit 1
     fi
     
-    # Make mvnw executable if needed (Unix systems)
-    if [[ ! "$OSTYPE" == "msys" && ! "$OSTYPE" == "cygwin" ]] && [ ! -x "$mvnw_script" ]; then
+    # Make mvnw executable if needed
+    if [ ! -x "$mvnw_script" ]; then
         chmod +x "$mvnw_script"
     fi
     
-    # Prepare Maven arguments
+    # Prepare Maven arguments with required parameters (hardcoded)
     local pom_file="$PROJECT_DIR/pom.xml"
     
     # Check if pom.xml exists
@@ -409,11 +426,11 @@ main() {
     # Print the complete command that will be executed
     log_info "Executing command:"
     log_info "$mvnw_script -q -f $pom_file spring-boot:run"
-    log_info "=========================================="
+    log_info "----------------------------------------"
     
     # Run Maven with hardcoded arguments
     exec "$mvnw_script" "${maven_args[@]}"
 }
 
-# Run main function
+# Run main function (no arguments needed)
 main
