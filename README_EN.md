@@ -1,6 +1,7 @@
 # MCP MySQL Server
 
 A Spring AI-based MCP capable of executing any SQL query.
+> For support of other databases, see [mcp-db-server](https://github.com/JamesSmith888/mcp-db-server)
 
 [中文文档](README.md) | [English Documentation](README_EN.md)
 

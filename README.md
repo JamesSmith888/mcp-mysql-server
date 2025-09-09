@@ -1,6 +1,7 @@
 # MCP MySQL Server
 
 一个基于 Spring AI 的MCP，可执行任意 SQL。
+> 关于其他数据库支持，请查看 [mcp-db-server](https://github.com/JamesSmith888/mcp-db-server)
 
 [中文文档](README.md) | [English Documentation](README_EN.md)
 
