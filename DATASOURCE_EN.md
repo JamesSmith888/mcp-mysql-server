@@ -57,6 +57,7 @@ datasource:
 | Parameter | Type    | Description                                           | Default | Example |
 |:----------|:--------|:-----------------------------------------------------|:--------|:--------|
 | `default` | Boolean | Whether to set as default data source. If not specified, the first data source will be set as default | false   | true    |
+| `readonly` | Boolean | Whether to set as read-only data source. When enabled, connection will be set to read-only mode and SQL security control will be disabled | false   | true    |
 
 ## Configuration Examples
 
@@ -76,6 +77,9 @@ datasource:
 
 ```yaml
 datasource:
+  # Global configuration
+  readonly: false  # Global read-only setting, can be overridden by individual data sources
+  
   datasources:
     # Production database
     production:
@@ -83,6 +87,13 @@ datasource:
       username: prod_user
       password: prod_password
       default: true  # Set as default data source
+
+    # Read-only analytics database
+    analytics:
+      url: jdbc:mysql://analytics-server:3306/analytics_db
+      username: analytics_user
+      password: analytics_password
+      readonly: true  # Read-only data source
 
     # Testing database
     testing:
@@ -95,12 +106,6 @@ datasource:
       url: jdbc:mysql://localhost:3306/dev_db
       username: dev_user
       password: dev_password
-
-    # Analytics database
-    analytics:
-      url: jdbc:mysql://analytics-server:3306/analytics_db
-      username: analytics_user
-      password: analytics_password
 ```
 
 ## Data Source Usage
@@ -225,6 +230,12 @@ datasource:
 ```
 
 ## Security Considerations
+
+### SQL Security Control
+
+This system supports SQL security control features to prevent execution of dangerous database operations. For detailed configuration, please refer to the [SQL Security Control Documentation](SQL_SECURITY_EN.md).
+
+**Note:** When a data source is set to `readonly: true`, SQL security control will be automatically disabled because the database connection layer already provides read-only protection.
 
 ### Password Protection
 

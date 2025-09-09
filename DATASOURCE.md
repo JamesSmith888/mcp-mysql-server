@@ -57,6 +57,7 @@ datasource:
 | 参数       | 类型      | 描述                                    | 默认值   | 示例    |
 |:---------|:--------|:--------------------------------------|:------|:------|
 | `default` | Boolean | 是否设为默认数据源。如果未指定，第一个数据源将被设为默认       | false | true  |
+| `readonly` | Boolean | 是否设为只读数据源。启用后连接将设置为只读模式，且SQL安全控制将被禁用 | false | true  |
 
 ## 配置示例
 
@@ -76,6 +77,9 @@ datasource:
 
 ```yaml
 datasource:
+  # 全局配置
+  readonly: false  # 全局只读设置，可被单个数据源覆盖
+  
   datasources:
     # 生产环境数据库
     production:
@@ -83,6 +87,13 @@ datasource:
       username: prod_user
       password: prod_password
       default: true  # 设为默认数据源
+
+    # 只读分析数据库
+    analytics:
+      url: jdbc:mysql://analytics-server:3306/analytics_db
+      username: analytics_user
+      password: analytics_password
+      readonly: true  # 只读数据源
 
     # 测试环境数据库
     testing:
@@ -95,12 +106,6 @@ datasource:
       url: jdbc:mysql://localhost:3306/dev_db
       username: dev_user
       password: dev_password
-
-    # 分析数据库
-    analytics:
-      url: jdbc:mysql://analytics-server:3306/analytics_db
-      username: analytics_user
-      password: analytics_password
 ```
 
 ## 数据源使用
@@ -225,6 +230,12 @@ datasource:
 ```
 
 ## 安全性考虑
+
+### SQL安全控制
+
+本系统支持SQL安全控制功能，可以防止执行危险的数据库操作。详细配置请参考 [SQL安全控制文档](SQL_SECURITY.md)。
+
+**注意：** 当数据源设置为 `readonly: true` 时，SQL安全控制将自动禁用，因为数据库连接层面已提供只读保护。
 
 ### 密码保护
 
